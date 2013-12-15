@@ -6,6 +6,8 @@
 
 #define BMP085_ADDRESS 0x77  // I2C address of BMP085
 #define BMP085_USE_DATASHEET_VALS 0
+#define MODEL_SYNC 0
+
 const unsigned char OSS = 0;  // Oversampling Setting
 
 // Calibration values
@@ -22,7 +24,7 @@ int mc;
 int md;
 
 // Use these for altitude conversions
-const float p0 = 101325;     // Pressure at sea level (Pa)
+const float p0 = 101325;     // average sea-level pressure (Pa)
 
 // b5 is calculated in bmp085GetTemperature(...), 
 // this variable is also used in bmp085GetPressure(...), so...
@@ -52,10 +54,10 @@ void setup()
   for (int i = 0; i<samplesize; i++){
     samples[i]=0;
   }
-//  for (int i = 0; i<samplesize; i++){
-//    getSamples();
+  for (int i = 0; i<samplesize; i++){
+    getSamples();
 //    cheezygraph_baseline = altitude -  5;
-//  }
+  }
 }
 
 
@@ -63,7 +65,7 @@ void setup()
 void loop()
 {
   getSamples();  
-  delay(100);
+  delay(500);
 }
 
 
@@ -147,7 +149,7 @@ void  bmp085Calibration() {
   b2  = 4;
   mb  = -32768;
   mc  = -8711;
-  md  = 2868;
+  md  = 2858;
 #else
   ac1 = bmp085ReadInt(0xAA); 
   ac2 = bmp085ReadInt(0xAC); 
@@ -160,19 +162,23 @@ void  bmp085Calibration() {
   mb = bmp085ReadInt(0xBA);  
   mc = bmp085ReadInt(0xBC);  
   md = bmp085ReadInt(0xBE); 
+  
+  // adjustments for this specific sensor
+  md = 1882;
+  ac1 = 6535;
 #endif
-//  Serial.println("Reading Calibration Data");
-//  Serial.print("AC1: ");  Serial.println(ac1,DEC);  
-//  Serial.print("AC2: ");  Serial.println(ac2,DEC);  
-//  Serial.print("AC3: ");  Serial.println(ac3,DEC);  
-//  Serial.print("AC4: ");  Serial.println(ac4,DEC);  
-//  Serial.print("AC5: ");  Serial.println(ac5,DEC);  
-//  Serial.print("AC6: ");  Serial.println(ac6,DEC);  
-//  Serial.print("B1: ");  Serial.println(b1,DEC);  
-//  Serial.print("B2: ");  Serial.println(b2,DEC);  
-//  Serial.print("MB: ");  Serial.println(mb,DEC); 
-//  Serial.print("MC: ");  Serial.println(mc,DEC);  
-//  Serial.print("MD: ");  Serial.println(md,DEC);
+  Serial.println("Reading Calibration Data");
+  Serial.print("AC1: ");  Serial.println(ac1,DEC);  
+  Serial.print("AC2: ");  Serial.println(ac2,DEC);  
+  Serial.print("AC3: ");  Serial.println(ac3,DEC);  
+  Serial.print("AC4: ");  Serial.println(ac4,DEC);  
+  Serial.print("AC5: ");  Serial.println(ac5,DEC);  
+  Serial.print("AC6: ");  Serial.println(ac6,DEC);  
+  Serial.print("B1: ");  Serial.println(b1,DEC);  
+  Serial.print("B2: ");  Serial.println(b2,DEC);  
+  Serial.print("MB: ");  Serial.println(mb,DEC); 
+  Serial.print("MC: ");  Serial.println(mc,DEC);  
+  Serial.print("MD: ");  Serial.println(md,DEC);
 }
 
 
@@ -195,9 +201,13 @@ unsigned int bmp085ReadUT()
 
   // Read two bytes from registers 0xF6 and 0xF7
   ut = bmp085ReadInt(0xF6);
-  Serial.print("\n\n\n\nut\t"); Serial.println(ut);
-  Serial.print("\t"); Serial.println();
-  return ut;
+#if MODEL_SYNC
+  Serial.print("\n\n\n\nut\t"); 
+  Serial.println(ut);  
+  Serial.print("\t"); 
+  Serial.println();
+#endif
+return ut;
 }
 
 
@@ -230,12 +240,16 @@ unsigned long bmp085ReadUP()
   lsb = Wire.read();
   xlsb = Wire.read();
 
-  up = (((unsigned long) msb << 16) | ((unsigned long) lsb << 8) | (unsigned long) xlsb) >> (8-OSS);
+  up = (((unsigned long) msb << 16) | 
+        ((unsigned long) lsb << 8) | 
+        (unsigned long) xlsb) >> (8-OSS);
 
+#if MODEL_SYNC
   Serial.print("msb\t"); Serial.println(msb);
   Serial.print("lsb\t"); Serial.println(lsb);
   Serial.print("xlsb\t"); Serial.println(xlsb);
   Serial.print("up\t"); Serial.println(up);
+#endif
   return up;
 }
 
@@ -250,16 +264,18 @@ float bmp085GetTemperature(unsigned int ut)
   x1 = (((long)ut - (long)ac6)*(long)ac5) >> 15;
   x2 = ((long)mc << 11)/(x1 + md);
   b5 = x1 + x2;
-//  Serial.print("temp: ");  Serial.print(b5);  Serial.print(" = ");  
-//  Serial.print(x1);  Serial.print(" + ");  Serial.println(x2);
 
-// testing!  force an outside temp
-//  b5 = (((-17.7 * 10)*16)-8);
+#if MODEL_SYNC
   Serial.print("x1\t"); Serial.println(x1);
   Serial.print("x2\t"); Serial.println(x2);
   Serial.print("b5\t"); Serial.println(b5);
+#endif
+
   t = ((b5 + 8)>>4);
+#if MODEL_SYNC
   Serial.print("t\t"); Serial.println(t);
+#endif
+
   return t/10.0;  
 }
 
@@ -281,48 +297,66 @@ long bmp085GetPressure(unsigned long up)
   x3 = x1 + x2;
   b3 = (((((long)ac1)*4 + x3)<<OSS) + 2)>>2;  
 
+#if MODEL_SYNC
   Serial.print("\n");
   Serial.print("b6\t"); Serial.println(b6);
   Serial.print("x1\t"); Serial.println(x1);
   Serial.print("x2\t"); Serial.println(x2);
   Serial.print("x3\t"); Serial.println(x3);
   Serial.print("b3\t"); Serial.println(b3);
+#endif
 
   // Calculate B4
   x1 = (ac3 * b6)>>13;
   x2 = (b1 * (b6 * b6>>12))>>16;
   x3 = ((x1 + x2) + 2)>>2;
   b4 = (ac4 * (unsigned long)(x3 + 32768))>>15;
+
+#if MODEL_SYNC
   Serial.print("\n");
   Serial.print("x1\t"); Serial.println(x1);
   Serial.print("x2\t"); Serial.println(x2);
   Serial.print("x3\t"); Serial.println(x3);
   Serial.print("b4\t"); Serial.println(b4);
+#endif
 
   b7 = ((unsigned long)(up - b3) * (50000>>OSS));
+#if MODEL_SYNC
   Serial.print("b7\t"); Serial.println(b7);
-  
+#endif
+
   if (b7 < 0x80000000) { 
     p = (b7*2)/b4;
-    Serial.print("<\np\t"); Serial.println(p);
+//    Serial.print("<\np\t"); Serial.println(p);
   } else { 
     p = (b7/b4)*2;
-    Serial.print(">\np\t"); Serial.println(p);
+//    Serial.print(">\np\t"); Serial.println(p);
   }
 
   x1 = (p>>8) * (p>>8);
+#if MODEL_SYNC
+  Serial.print("p\t"); Serial.println(p);
   Serial.print("x1\t"); Serial.println(x1);
+#endif
 
   x1 = (x1 * 3038)>>16;
+#if MODEL_SYNC
   Serial.print("x1\t"); Serial.println(x1);
-
+#endif
 
   x2 = (-7357 * p)>>16;
+#if MODEL_SYNC
   Serial.print("x2\t"); Serial.println(x2);
-
+#endif
 
   p = p + ((x1 + x2 + 3791)>>4);
+//  p = p + ((x1 + x2 + 3791 + 18570)>>4);
+#if MODEL_SYNC
   Serial.print("p\t"); Serial.println(p);
+#endif
+
+// add mysterious adjustment
+//   p = p + 774;
   return p;
 }
 
